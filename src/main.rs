@@ -1,6 +1,6 @@
 pub(crate) mod tests;
 
-use std::{collections::VecDeque, fs::{self}, io::stdin};
+use std::{collections::VecDeque, fs::{self}, io::{Read, stdin}};
 use clap::{CommandFactory, Parser};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -168,14 +168,14 @@ fn parse_bf(bf_code: &str) -> Vec<BfInstructions> {
 
 }
 
-fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<i32>, String) {
+fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<u8>, String) {
 
     let mut all_output = String::new();
 
-    let mut read_buf = String::new();
-    let mut tape: Vec<i32> = vec![0; 1];
+    let mut tape: Vec<u8> = vec![0; 1];
     let mut ptr = 0;
     let mut instruction_ptr = 0;
+    let mut stdin = stdin();
 
     while instruction_ptr < instructions.len() {
         match instructions[instruction_ptr] {
@@ -194,32 +194,30 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<i32>, String)
                 ptr -= 1;
             }
             BfInstructions::ValIncrement => {
-                tape[ptr] += 1;
+                let _ = tape[ptr].wrapping_add(1);
                 if debug { println!("Instruction {instruction_ptr}: val +, tape: {:?}, ptr: {ptr}", tape); }
             }
             BfInstructions::ValDecrement => {
-                tape[ptr] -= 1;
+                let _ = tape[ptr].wrapping_sub(1);
                 if debug { println!("Instruction {instruction_ptr}: val -, tape: {:?}, ptr: {ptr}", tape); }
             }
             BfInstructions::Read => {
                 if debug { println!("Instruction {instruction_ptr}: read from stdin, tape: {:?}, ptr: {ptr}", tape); }
-                if read_buf.is_empty() {
-                    stdin().read_line(&mut read_buf).unwrap();
-                }
 
-                if !read_buf.is_empty() {
-                    let c = read_buf.remove(0);
-                    tape[ptr] = c as i32;
-                } else {
-                    tape[ptr] = -1;
+                let mut buf = [0u8; 1];
+
+                match stdin.read(&mut buf) {
+                    Ok(1) => tape[ptr] = buf[0],
+                    Ok(0) => tape[ptr] = 0, // EOF
+                    Err(_) => tape[ptr] = 0,
+                    _ => unreachable!(),
                 }
             }
             BfInstructions::Write => {
                 if debug { print!("Instruction {instruction_ptr}: writing: "); }
-                if let Some(c) = char::from_u32((tape[ptr] % 256).try_into().unwrap()) {
-                    print!("{}", c);
-                    all_output.push(c)
-                }
+                    print!("{}", tape[ptr]);
+                    all_output.push(tape[ptr] as char);
+                
                 if debug { println!(); }
             }
             BfInstructions::LoopStart(i) => {
