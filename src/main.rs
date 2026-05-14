@@ -1,9 +1,9 @@
 pub(crate) mod tests;
 
-use std::{fs::{self}, io::stdin};
+use std::{collections::VecDeque, fs::{self}, io::stdin};
 use clap::{CommandFactory, Parser};
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum BfInstructions {
     PtrIncrement,
     PtrDecrement,
@@ -69,9 +69,8 @@ fn parse_args(args: &Options) -> String {
     bf_code
 }
 
-fn probe_loop(bf_code: &str, start_idx: Option<usize>, end_idx: Option<usize>) -> Result<usize, ()> {
+fn unclosed_loop_check(bf_code: &str, start_idx: Option<usize>, end_idx: Option<usize>) -> Result<usize, ()> {
     let mut stack_size = 0;
-    
     match (start_idx, end_idx) {
         (Some(start), None) => {
             let mut idx = Err(());
@@ -113,7 +112,7 @@ fn probe_loop(bf_code: &str, start_idx: Option<usize>, end_idx: Option<usize>) -
             idx
         },
         _ => {
-            panic!("Logic Error in probe_loop: Use either start_idx or end_idx, not both! This error should not happen during normal interpreter use.")
+            panic!("Logic Error in unclosed_loop_check: Use either start_idx or end_idx, not both! This error should not happen during normal interpreter use.")
         },
     }
 }
@@ -121,11 +120,13 @@ fn probe_loop(bf_code: &str, start_idx: Option<usize>, end_idx: Option<usize>) -
 fn parse_bf(bf_code: &str) -> Vec<BfInstructions> {
     if bf_code.is_empty() { return vec![] }
 
+    let mut instructions_unprobed: Vec<BfInstructions> = Vec::new();
+
     let mut instructions: Vec<BfInstructions> = Vec::new();
 
     let mut row_number = 1;
     let mut col_number = 0;
-
+    // first pass: Create Bf code with unprobed loops, probe for looping errors
     for (i, c) in bf_code.chars().enumerate() {
         if c == '\n' {
             row_number += 1;
@@ -133,26 +134,35 @@ fn parse_bf(bf_code: &str) -> Vec<BfInstructions> {
         }
         col_number += 1;
         if let Some(inst) = BfInstructions::from_char(c) {
+            instructions_unprobed.push(inst);
             match inst {
                 BfInstructions::LoopStartUnprobed => {
-                    match probe_loop(bf_code, Some(i), None) {
-                        Ok(v) => instructions.push(BfInstructions::LoopStart(v)),
-                        Err(_) => panic!("Syntax Error: Unclosed loop-start at row {}, col {}", row_number, col_number)
+                    if unclosed_loop_check(bf_code, Some(i), None).is_err() {
+                        panic!("Syntax Error: Unclosed loop-start at row {}, col {}", row_number, col_number)
                     }
                 }
                 BfInstructions::LoopEndUnprobed => {
-                    match probe_loop(bf_code, None, Some(i)) {
-                        Ok(v) => instructions.push(BfInstructions::LoopEnd(v)),
-                        Err(_) => panic!("Syntax Error: Unexpected loop-end (']') at row {}, col {}", row_number, col_number)
+                    if unclosed_loop_check(bf_code, None, Some(i)).is_err() {
+                        panic!("Syntax Error: Unexpected loop-end (']') at row {}, col {}", row_number, col_number)
                     }
                 }
-                _ => {
-                    instructions.push(inst)
-                }
+                _ => {}
             }
+        }  
+    }
+    let mut probe_stack: VecDeque<(usize, BfInstructions)> = VecDeque::new();
+    for (idx, inst) in instructions_unprobed.iter().enumerate() {
+        if *inst == BfInstructions::LoopStartUnprobed {
+            probe_stack.push_back((idx, *inst));
+            instructions.push(BfInstructions::LoopStartUnprobed);
+        } else if *inst == BfInstructions::LoopEndUnprobed
+            && let Some((start_idx, _)) = probe_stack.pop_back() {
+            instructions[start_idx] = BfInstructions::LoopStart(idx);
+            instructions.push(BfInstructions::LoopEnd(start_idx))
+        } else {
+            instructions.push(*inst)
         }
     }
-
     instructions
 
 
@@ -170,14 +180,14 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<i32>, String)
     while instruction_ptr < instructions.len() {
         match instructions[instruction_ptr] {
             BfInstructions::PtrIncrement => {
-                if debug { println!("Ptr >, tape: {:?}, ptr: {ptr}", tape); }
+                if debug { println!("Instruction {instruction_ptr}: Ptr >, tape: {:?}, ptr: {ptr}", tape); }
                 ptr += 1;
                 if ptr >= tape.len() {
                     tape.push(0);
                 }
             }
             BfInstructions::PtrDecrement => {
-                if debug { println!("Ptr <"); }
+                if debug { println!("Instruction {instruction_ptr}: Ptr <, tape: {:?}, ptr: {ptr}", tape); }
                 if ptr == 0 {
                     panic!("Pointer Error: Attempted to decrease pointer past 0!")
                 }
@@ -185,14 +195,14 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<i32>, String)
             }
             BfInstructions::ValIncrement => {
                 tape[ptr] += 1;
-                if debug { println!("val +, tape: {:?}, ptr: {ptr}", tape); }
+                if debug { println!("Instruction {instruction_ptr}: val +, tape: {:?}, ptr: {ptr}", tape); }
             }
             BfInstructions::ValDecrement => {
                 tape[ptr] -= 1;
-                if debug { println!("val -, tape: {:?}, ptr: {ptr}", tape); }
+                if debug { println!("Instruction {instruction_ptr}: val -, tape: {:?}, ptr: {ptr}", tape); }
             }
             BfInstructions::Read => {
-                if debug { println!("reading stdin, tape: {:?}, ptr: {ptr}", tape); }
+                if debug { println!("Instruction {instruction_ptr}: read from stdin, tape: {:?}, ptr: {ptr}", tape); }
                 if read_buf.is_empty() {
                     stdin().read_line(&mut read_buf).unwrap();
                 }
@@ -205,7 +215,7 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<i32>, String)
                 }
             }
             BfInstructions::Write => {
-                if debug { print!("writing: "); }
+                if debug { print!("Instruction {instruction_ptr}: writing: "); }
                 if let Some(c) = char::from_u32((tape[ptr] % 256).try_into().unwrap()) {
                     print!("{}", c);
                     all_output.push(c)
@@ -213,14 +223,14 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<i32>, String)
                 if debug { println!(); }
             }
             BfInstructions::LoopStart(i) => {
-                if debug { println!("hit loop-start at: {instruction_ptr}, end at {i}, tape: {:?}, ptr: {ptr}", tape); }
+                if debug { println!("Instruction {instruction_ptr}: loop-start, end at {i}, tape: {:?}, ptr: {ptr}", tape); }
                 if tape[ptr] == 0 {
 
                     instruction_ptr = i
                 }
             }
             BfInstructions::LoopEnd(i) => {
-                if debug { println!("hit loop-end at {instruction_ptr}, start at {i}, tape: {:?}, ptr: {ptr}", tape); }
+                if debug { println!("Instruction {instruction_ptr}: loop-end, start at {i}, tape: {:?}, ptr: {ptr}", tape); }
                 if tape[ptr] > 0 {
                     instruction_ptr = i
                 }
@@ -241,12 +251,16 @@ fn main() {
 
     // parse Bf
     let instructions = parse_bf(&bf_code);
+    if args.debug {
+        println!("Parsed list of bf instructions: {:?}", instructions);
+    }
 
     // execute Bf
     let (tape, output) = execute(instructions, args.debug);
 
     println!("--- Program finished executing ---");
+    println!("Final tape contents: {:?}", tape);
     if args.debug {
-        println!("Final tape contents: {:?}, Full program output: {output}", tape)
+        println!("Full program output: {output}");
     }
 }
