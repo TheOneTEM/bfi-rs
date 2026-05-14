@@ -4,7 +4,7 @@ It's a brainfuck interpreter.
 
 ## Usage Instructions
 ```
-**Usage**: bfi.exe [OPTIONS] [FILE]
+**Usage**: ./bfi [OPTIONS] [FILE]
 
 **Arguments**:
   [FILE]  An input file
