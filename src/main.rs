@@ -94,7 +94,7 @@ fn probe_loop(bf_code: &str, start_idx: Option<usize>, end_idx: Option<usize>) -
         (None, Some(end)) => {
             let mut idx = Err(());
 
-            for (i, c) in bf_code[..end].char_indices().rev() {
+            for (i, c) in bf_code[..=end].char_indices().rev() {
                 match c {
                     '[' => {
                         stack_size -= 1
