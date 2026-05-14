@@ -171,7 +171,7 @@ fn parse_bf(bf_code: &str) -> Vec<BfInstructions> {
 fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<u8>, String) {
 
     let mut all_output = String::new();
-
+    
     let mut tape: Vec<u8> = vec![0; 1];
     let mut ptr = 0;
     let mut instruction_ptr = 0;
@@ -194,11 +194,11 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<u8>, String) 
                 ptr -= 1;
             }
             BfInstructions::ValIncrement => {
-                let _ = tape[ptr].wrapping_add(1);
+                tape[ptr] = tape[ptr].wrapping_add(1);
                 if debug { println!("Instruction {instruction_ptr}: val +, tape: {:?}, ptr: {ptr}", tape); }
             }
             BfInstructions::ValDecrement => {
-                let _ = tape[ptr].wrapping_sub(1);
+                tape[ptr] = tape[ptr].wrapping_sub(1);
                 if debug { println!("Instruction {instruction_ptr}: val -, tape: {:?}, ptr: {ptr}", tape); }
             }
             BfInstructions::Read => {
@@ -215,7 +215,7 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<u8>, String) 
             }
             BfInstructions::Write => {
                 if debug { print!("Instruction {instruction_ptr}: writing: "); }
-                    print!("{}", tape[ptr]);
+                    print!("{}", tape[ptr] as char);
                     all_output.push(tape[ptr] as char);
                 
                 if debug { println!(); }
