@@ -256,6 +256,7 @@ fn main() {
     // execute Bf
     let (tape, output) = execute(instructions, args.debug);
 
+    println!();
     println!("--- Program finished executing ---");
     println!("Final tape contents: {:?}", tape);
     if args.debug {
