@@ -42,6 +42,7 @@ struct Options {
     #[arg(short = 'c', long = "inline", default_value_t = String::new())]
     inline_code: String,
 
+    /// This is debug mode for debugging the interpreter.
     #[arg(long = "debug")]
     debug: bool
 }
@@ -162,7 +163,6 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<i32>, String)
     let mut all_output = String::new();
 
     let mut read_buf = String::new();
-    let mut input_queue = String::new();
     let mut tape: Vec<i32> = vec![0; 1];
     let mut ptr = 0;
     let mut instruction_ptr = 0;
@@ -192,15 +192,17 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<i32>, String)
                 if debug { println!("val -, tape: {:?}, ptr: {ptr}", tape); }
             }
             BfInstructions::Read => {
-                if debug { print!("reading>"); }
-                if let Some(c) = read_buf.chars().next() {
+                if debug { println!("reading stdin, tape: {:?}, ptr: {ptr}", tape); }
+                if read_buf.is_empty() {
+                    stdin().read_line(&mut read_buf).unwrap();
+                }
+
+                if !read_buf.is_empty() {
+                    let c = read_buf.remove(0);
                     tape[ptr] = c as i32;
-                } else if let Ok(_line) = stdin().read_line(&mut read_buf) {
-                    input_queue += &read_buf;
                 } else {
                     tape[ptr] = -1;
                 }
-                if debug { println!("tape: {:?}, ptr: {ptr}", tape)}
             }
             BfInstructions::Write => {
                 if debug { print!("writing: "); }
@@ -213,6 +215,7 @@ fn execute(instructions: Vec<BfInstructions>, debug: bool) -> (Vec<i32>, String)
             BfInstructions::LoopStart(i) => {
                 if debug { println!("hit loop-start at: {instruction_ptr}, end at {i}, tape: {:?}, ptr: {ptr}", tape); }
                 if tape[ptr] == 0 {
+
                     instruction_ptr = i
                 }
             }
@@ -240,5 +243,10 @@ fn main() {
     let instructions = parse_bf(&bf_code);
 
     // execute Bf
-    execute(instructions, args.debug);
+    let (tape, output) = execute(instructions, args.debug);
+
+    println!("--- Program finished executing ---");
+    if args.debug {
+        println!("Final tape contents: {:?}, Full program output: {output}", tape)
+    }
 }
