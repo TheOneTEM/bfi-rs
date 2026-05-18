@@ -14,3 +14,7 @@ It's a brainfuck interpreter.
       --debug                 This is debug mode for debugging the interpreter
   -h, --help                  Print help
   ```
+
+--inline: Takes in a string as BF code to interpret.
+
+--debug: Prints a debug log containing the program state after every instruction execution.
